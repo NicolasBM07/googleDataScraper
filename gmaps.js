@@ -3,241 +3,231 @@ const fs = require('fs');
 
 // Function to mask phone numbers for privacy (replace last 4 digits with ****)
 function maskPhoneNumber(phoneNumber) {
-    if (!phoneNumber || phoneNumber.length < 4) {
-        return phoneNumber;
-    }
+    if (!phoneNumber || phoneNumber.length < 4) return phoneNumber;
     return phoneNumber.slice(0, -4) + '****';
 }
 
-const query = "Cafe Purwokerto";
-const maxScrolls = 2;
-const scrollPause = 2000; // in milliseconds
+// Array of cities to search
+const cities = ["Winnipeg","Brandon","Steinbach","Regina","Saskatoon","Prince Albert","Moose Jaw","Halifax","Sydney","Dartmouth","Moncton","Saint John","Fredericton"];
+const maxScrolls = 8;
+const scrollPause = 2000;
 
 (async () => {
     const browser = await chromium.launch({ headless: false });
     const context = await browser.newContext({
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        userAgent:
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
         viewport: { width: 1366, height: 768 }
     });
+
     const page = await context.newPage();
+    const data = [];
 
-    try {
-        // Open Google Maps
-        await page.goto("https://www.google.com/maps");
-        await page.waitForTimeout(5000);
+    for (const city of cities) {
+        try {
+            const query = `coworking spaces near ${city}`;
+            await page.goto("https://www.google.com/maps");
+            await page.waitForTimeout(5000);
 
-        // Search input and enter query
-        const searchBox = page.locator("#searchboxinput");
-        await searchBox.fill(query);
-        await searchBox.press("Enter");
-        await page.waitForTimeout(5000);
+            const searchBox = page.locator("#UGojuc");
+            await searchBox.fill(query);
+            await searchBox.press("Enter");
+            await page.waitForTimeout(5000);
 
-        // Scroll the results feed
-        const scrollable = page.locator('div[role="feed"]');
-        for (let i = 0; i < maxScrolls; i++) {
-            await page.evaluate((el) => {
-                const element = document.querySelector('div[role="feed"]');
-                if (element) {
-                    element.scrollTop = element.scrollHeight;
-                }
-            });
-            await page.waitForTimeout(scrollPause);
-        }
+            for (let i = 0; i < maxScrolls; i++) {
+                await page.evaluate(() => {
+                    const el = document.querySelector('div[role="feed"]');
+                    if (el) el.scrollTop = el.scrollHeight;
+                });
+                await page.waitForTimeout(scrollPause);
+            }
 
-        // Get all result cards
-        const feedContainer = page.locator('div.m6QErb.DxyBCb.kA9KIf.dS8AEf.XiKgde.ecceSd[role="feed"]');
-        const cards = feedContainer.locator("div.Nv2PK.THOPZb.CpccDe");
-        const count = await cards.count();
+            const feedContainer = page.locator('div[role="feed"]');
+            const cards = feedContainer.locator('a.hfpxzc'); // card links
+            const count = await cards.count();
 
-        console.log(`Found ${count} cards`);
+            if (count === 0) {
+                console.log(`No results found for city: ${city}`);
+                continue; // Skip to next city
+            }
 
-        const data = [];
+            console.log(`Found ${count} cards in ${city}`);
 
-        for (let i = 0; i < count; i++) {
-            const card = cards.nth(i);
+            for (let i = 0; i < count; i++) {
+                const card = cards.nth(i);
 
-            let name = "";
-            let rating = "";
-            let reviews = "";
-            let category = "";
-            let services = "";
-            let imageUrl = "";
-            let detailUrl = "";
-            let phoneNumber = "";
+                let name = "";
+                let address = "";
+                let detailUrl = "";
+                let phoneNumber = "";
+                let website = "";
+                let email = "";
 
-            try {
-                // Name
-                const nameEl = card.locator(".qBF1Pd");
-                if (await nameEl.count() > 0) {
-                    name = await nameEl.nth(0).innerText();
-                }
-
-                // Rating
-                const ratingEl = card.locator('span[aria-label*="stars"]');
-                if (await ratingEl.count() > 0) {
-                    const ariaLabel = await ratingEl.nth(0).getAttribute("aria-label");
-                    if (ariaLabel) {
-                        const match = ariaLabel.match(/([\d.]+)/);
-                        if (match) {
-                            rating = match[1];
-                        }
-                    }
-                }
-
-                // Reviews
-                const reviewsEl = card.locator(".UY7F9");
-                if (await reviewsEl.count() > 0) {
-                    const text = await reviewsEl.nth(0).innerText();
-                    const match = text.match(/([\d,]+)/);
-                    if (match) {
-                        reviews = match[1].replace(/,/g, "");
-                    }
-                }
-
-                // Category
-                const categoryEl = card.locator('div.W4Efsd > span').first();
-                if (categoryEl) {
-                    try {
-                        category = await categoryEl.innerText();
-                    } catch (e) {
-                        // Element might not exist
-                    }
-                }
-
-                // Services
-                const servicesEl = card.locator('div.ah5Ghc > span');
-                const servicesCount = await servicesEl.count();
-                if (servicesCount > 0) {
-                    const servicesList = [];
-                    for (let j = 0; j < servicesCount; j++) {
-                        try {
-                            const serviceText = await servicesEl.nth(j).innerText();
-                            servicesList.push(serviceText);
-                        } catch (e) {
-                            // Skip if element is not accessible
-                        }
-                    }
-                    services = servicesList.join(", ");
-                }
-
-                // Image URL
-                const imageEl = card.locator('img[src*="googleusercontent"]');
-                if (await imageEl.count() > 0) {
-                    imageUrl = await imageEl.nth(0).getAttribute("src") || "";
-                }
-
-                // Detail URL
-                const linkEl = card.locator('a.hfpxzc');
-                if (await linkEl.count() > 0) {
-                    detailUrl = await linkEl.nth(0).getAttribute("href") || "";
-                }
-
-                // Click card to get phone number
                 try {
+                    // Get detail URL directly from card
+                    detailUrl = await card.getAttribute("href");
+
+                    // Click card to load detail panel
                     await card.click();
-                    await page.waitForTimeout(3000); // Wait longer for detail panel to load
-                    
-                    // Wait for the detail panel to be visible
-                    await page.waitForSelector('[role="main"]', { timeout: 5000 });
-                    
-                    // Try to find phone number using multiple selectors based on the HTML structure
-                    const phoneSelectors = [
-                        'button[data-item-id*="phone:tel:"] .Io6YTe.fontBodyMedium.kR99db.fdkmkc',
-                        'button[aria-label*="Phone:"] .Io6YTe.fontBodyMedium.kR99db.fdkmkc',
-                        '.RcCsl button[data-item-id*="phone:tel:"] .Io6YTe',
-                        'button.CsEnBe[data-item-id*="phone:tel:"] .Io6YTe',
-                        '.Io6YTe.fontBodyMedium.kR99db.fdkmkc'
-                    ];
-                    
-                    let phoneFound = false;
-                    for (const selector of phoneSelectors) {
+                    await page.waitForTimeout(3000);
+
+                    // Name
+                    const nameEl = page.locator('h1.DUwDvf.lfPIob');
+                    if (await nameEl.count()) name = await nameEl.innerText();
+
+                    // Address
+                    const addressEl = page.locator('div.Io6YTe.fontBodyMedium.kR99db.fdkmkc');
+                    if (await addressEl.count()) address = await addressEl.first().innerText();
+
+                    // Phone & website
+                    const infoEls = await page.$$('div.Io6YTe.fontBodyMedium.kR99db.fdkmkc');
+                    for (const el of infoEls) {
+                        const text = (await el.innerText()).trim();
+
+                        if (!phoneNumber && /\+?\d[\d\s\-\(\)]{7,}\d/.test(text)) {
+                            phoneNumber = text;
+                        }
+
+                        if (!website && (text.includes(".com") || text.includes(".ca") || text.includes(".net"))) {
+                            website = text.startsWith("http") ? text : `https://${text}`;
+                        }
+                    }
+
+                    // Email scrape
+                    // if (website) {
+                    //     const sitePage = await context.newPage();
+                    //     try {
+                    //         await sitePage.goto(website, { timeout: 15000 });
+                    //         await sitePage.waitForTimeout(3000);
+                    //         const html = await sitePage.content();
+                    //         // const match = html.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+                    //         const match = html.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.(com|ca|org|net|co)\b/i);
+                    //         if (match) email = match[0];
+                    //     } catch {}
+                    //     await sitePage.close();
+
+                    //     if (!email) {
+                    //         const contactPaths = ['/contact', '/pages/contact'];
+                    //         const contactPage = await context.newPage();
+                    //         for (const path of contactPaths) {
+                    //             try {
+                    //                 const contactUrl = website.replace(/\/$/, '') + path;
+                    //                 await contactPage.goto(contactUrl, { timeout: 15000 });
+                    //                 await contactPage.waitForTimeout(3000);
+                    //                 const html = await contactPage.content();
+                    //                 const match = html.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+                    //                 if (match) {
+                    //                     email = match[0];
+                    //                     break;
+                    //                 }
+                    //             } catch {}
+                    //         }
+                    //         await contactPage.close();
+                    //     }
+                    // }
+
+                    if (website) {
+                        const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.(com|ca|org|net|co)\b/i;
+
+                        /** 1️⃣ HOMEPAGE **/
+                        const sitePage = await context.newPage();
                         try {
-                            const phoneEl = page.locator(selector);
-                            const count = await phoneEl.count();
-                            
-                            if (count > 0) {
-                                for (let j = 0; j < count; j++) {
-                                    const phoneText = await phoneEl.nth(j).innerText();
-                                    // Check if it looks like a phone number (Indonesian format)
-                                    if (/^[\+]?[0-9\-\(\)\s]{8,}$/.test(phoneText.trim()) && 
-                                        (phoneText.includes('08') || phoneText.includes('+62'))) {
-                                        phoneNumber = phoneText.trim();
-                                        phoneFound = true;
+                            await sitePage.goto(website, { timeout: 15000 });
+                            await sitePage.waitForTimeout(3000);
+
+                            const html = await sitePage.content();
+                            const match = html.match(emailRegex);
+                            if (match) email = match[0];
+                        } catch {}
+                        
+                        /** 2️⃣ CONTACT PAGES **/
+                        if (!email) {
+                            const contactPaths = ['/contact', '/pages/contact', '/contact-us'];
+
+                            for (const path of contactPaths) {
+                                try {
+                                    const contactUrl = website.replace(/\/$/, '') + path;
+                                    await sitePage.goto(contactUrl, { timeout: 15000 });
+                                    await sitePage.waitForTimeout(3000);
+
+                                    const html = await sitePage.content();
+                                    const match = html.match(emailRegex);
+                                    if (match) {
+                                        email = match[0];
                                         break;
                                     }
-                                }
-                                if (phoneFound) break;
+                                } catch {}
                             }
-                        } catch (selectorError) {
-                            // Continue to next selector
                         }
+
+                        /** 3️⃣ FACEBOOK FALLBACK **/
+                        if (!email) {
+                            try {
+                                // Look for Facebook link on homepage
+                                await sitePage.goto(website, { timeout: 15000 });
+                                await sitePage.waitForTimeout(3000);
+
+                                const fbLink = await sitePage
+                                    .locator('a[href*="facebook.com"]')
+                                    .first()
+                                    .getAttribute('href');
+
+                                if (fbLink) {
+                                    const fbPage = await context.newPage();
+                                    try {
+                                        await fbPage.goto(fbLink, { timeout: 20000 });
+                                        await fbPage.waitForTimeout(5000);
+
+                                        const fbHtml = await fbPage.content();
+                                        const match = fbHtml.match(emailRegex);
+                                        if (match) email = match[0];
+                                    } catch {}
+                                    await fbPage.close();
+                                }
+                            } catch {}
+                        }
+
+                        await sitePage.close();
                     }
-                    
-                    if (!phoneFound) {
-                        console.log(`No phone found for ${name}`);
-                    }
-                    
-                    // Go back to the list by clicking somewhere else or pressing escape
+
                     await page.keyboard.press('Escape');
                     await page.waitForTimeout(1500);
-                    
-                } catch (phoneError) {
-                    console.log(`Could not get phone for ${name}:`, phoneError.message);
+
+                    data.push({
+                        Name: name,
+                        Address: address,
+                        "Detail URL": detailUrl,
+                        Phone: phoneNumber,
+                        Website: website,
+                        Email: email
+                    });
+
+                    console.log(
+                        `Processed ${i + 1}/${count}: ${name} | Address: ${address} | Phone: ${
+                            phoneNumber ? maskPhoneNumber(phoneNumber) : "No phone"
+                        } | Website: ${website || "No website"} | Email: ${email || "No email"}`
+                    );
+                } catch (e) {
+                    console.log(`Error on card ${i + 1}`, e.message);
                 }
-
-                data.push({
-                    Name: name,
-                    Rating: rating,
-                    Reviews: reviews,
-                    Category: category,
-                    Services: services,
-                    Image: imageUrl,
-                    "Detail URL": detailUrl,
-                    Phone: phoneNumber || ""
-                });
-
-                console.log(`Processed ${i + 1}/${count}: ${name} - Phone: ${phoneNumber ? maskPhoneNumber(phoneNumber) : "No phone"}`);
-
-            } catch (error) {
-                console.log(`Error processing card ${i + 1}:`, error.message);
-                // Still add the data even if there's an error, but without phone
-                data.push({
-                    Name: name,
-                    Rating: rating,
-                    Reviews: reviews,
-                    Category: category,
-                    Services: services,
-                    Image: imageUrl,
-                    "Detail URL": detailUrl,
-                    Phone: ""
-                });
             }
+        } catch (e) {
+            console.log(`Error searching city ${city}:`, e.message);
         }
-
-        // Convert to CSV format
-        const csvHeader = "Name,Rating,Reviews,Category,Services,Image,Detail URL,Phone\n";
-        const csvRows = data.map(row => {
-            return [
-                `"${row.Name.replace(/"/g, '""')}"`,
-                `"${row.Rating}"`,
-                `"${row.Reviews}"`,
-                `"${row.Category.replace(/"/g, '""')}"`,
-                `"${row.Services.replace(/"/g, '""')}"`,
-                `"${row.Image}"`,
-                `"${row["Detail URL"]}"`,
-                `"${row.Phone || ""}"`
-            ].join(',');
-        }).join('\n');
-
-        const csvContent = csvHeader + csvRows;
-
-        // Save to CSV file
-        fs.writeFileSync("maps_data_playwright.csv", csvContent, 'utf8');
-        console.log(`Saved ${data.length} records to maps_data_playwright.csv`);
-
-    } catch (error) {
-        console.error('Error during scraping:', error);
-    } finally {
-        await browser.close();
     }
+
+    /** CSV **/
+    const csvHeader = "Name,Address,Detail URL,Phone,Website,Email\n";
+    const csvRows = data
+        .map(r =>
+            [r.Name, r.Address, r["Detail URL"], r.Phone, r.Website, r.Email]
+                .map(v => `"${(v || "").replace(/"/g, '""')}"`)
+                .join(",")
+        )
+        .join("\n");
+
+    fs.writeFileSync("maps_data_playwright.csv", csvHeader + csvRows, "utf8");
+    console.log(`Saved ${data.length} records`);
+
+    await browser.close();
 })();
