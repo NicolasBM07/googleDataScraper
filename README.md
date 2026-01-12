@@ -50,11 +50,22 @@ CSV file contains columns:
 - Detail URL (Google Maps link)
 - Phone (Phone number)
 
+## Final Step (Clean the Data)
+
+   ```bash
+   node data.js
+   ```
+
+## Final Resoult:
+
+   This code will grab all the contacts you got from the scraper, eliminate any duplicates and enrich the data into a data.csv file, this will be your final file.
+
 ## Configuration
 
 Edit variables at the top of `gmaps.js`:
 ```javascript
-const query = "Laundry Jakarta";      // Search keyword
+const cities = []; // Places the City's in this Array
+const query = `coworking spaces near ${city}`; // Search keyword
 const maxScrolls = 2;                 // Number of scrolls for more results
 const scrollPause = 2000;             // Pause between scrolls (milliseconds)
 ```
