@@ -8,8 +8,8 @@ function maskPhoneNumber(phoneNumber) {
 }
 
 // Array of cities to search
-const cities = ["Winnipeg","Brandon","Steinbach","Regina","Saskatoon","Prince Albert","Moose Jaw","Halifax","Sydney","Dartmouth","Moncton","Saint John","Fredericton"];
-const maxScrolls = 8;
+const cities = ["Toronto","Ottawa","Mississauga","Brampton","Hamilton","Markham","Vaughan","Kitchener","Windsor","Richmond Hill","Oakville","Burlington","Oshawa","St. Catharines","Cambridge","Guelph","Whitby","Ajax","Thunder Bay","Waterloo","Brantford","Pickering","Niagara Falls","Peterborough","Sarnia","Barrie","Sault Ste. Marie","Kingston","London","Timmins","Orillia","Welland","Cornwall","North Bay","Quinte West","Belleville","Brockville","Owen Sound","Stratford","Port Colborne","Dryden","Kenora","Elliot Lake"];
+const maxScrolls = 10;
 const scrollPause = 2000;
 
 (async () => {
@@ -79,52 +79,32 @@ const scrollPause = 2000;
                     const addressEl = page.locator('div.Io6YTe.fontBodyMedium.kR99db.fdkmkc');
                     if (await addressEl.count()) address = await addressEl.first().innerText();
 
-                    // Phone & website
+                    // Phone & website (UPDATED LOGIC)
                     const infoEls = await page.$$('div.Io6YTe.fontBodyMedium.kR99db.fdkmkc');
+                    const websites = [];
+
                     for (const el of infoEls) {
                         const text = (await el.innerText()).trim();
 
+                        // Phone
                         if (!phoneNumber && /\+?\d[\d\s\-\(\)]{7,}\d/.test(text)) {
                             phoneNumber = text;
                         }
 
-                        if (!website && (text.includes(".com") || text.includes(".ca") || text.includes(".net"))) {
-                            website = text.startsWith("http") ? text : `https://${text}`;
+                        // Collect all domains except booking platforms
+                        if (
+                            text.includes('.') &&
+                            !text.includes('peerspace.com')
+                        ) {
+                            websites.push(text);
                         }
                     }
 
-                    // Email scrape
-                    // if (website) {
-                    //     const sitePage = await context.newPage();
-                    //     try {
-                    //         await sitePage.goto(website, { timeout: 15000 });
-                    //         await sitePage.waitForTimeout(3000);
-                    //         const html = await sitePage.content();
-                    //         // const match = html.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-                    //         const match = html.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.(com|ca|org|net|co)\b/i);
-                    //         if (match) email = match[0];
-                    //     } catch {}
-                    //     await sitePage.close();
-
-                    //     if (!email) {
-                    //         const contactPaths = ['/contact', '/pages/contact'];
-                    //         const contactPage = await context.newPage();
-                    //         for (const path of contactPaths) {
-                    //             try {
-                    //                 const contactUrl = website.replace(/\/$/, '') + path;
-                    //                 await contactPage.goto(contactUrl, { timeout: 15000 });
-                    //                 await contactPage.waitForTimeout(3000);
-                    //                 const html = await contactPage.content();
-                    //                 const match = html.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-                    //                 if (match) {
-                    //                     email = match[0];
-                    //                     break;
-                    //                 }
-                    //             } catch {}
-                    //         }
-                    //         await contactPage.close();
-                    //     }
-                    // }
+                    // Prefer the LAST website (usually the real business site)
+                    if (websites.length) {
+                        const raw = websites[websites.length - 1];
+                        website = raw.startsWith('http') ? raw : `https://${raw}`;
+                    }
 
                     if (website) {
                         const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.(com|ca|org|net|co)\b/i;
